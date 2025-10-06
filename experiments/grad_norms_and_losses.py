@@ -96,7 +96,7 @@ def plot_heatmaps_and_loss(
         interpolation="nearest",
     )
     ax_h0.set_title("(a) Standard Fine Tuning")
-    ax_h0.set_xlabel("Gradient Steps")
+    ax_h0.set_xlabel("Gradient Steps (Log Scale)")
     ax_h0.set_ylabel(rf"$C_k$ Position")
     ax_h0.set_yticks(list(range(8)))
     ax_h0.set_yticklabels(
@@ -125,7 +125,7 @@ def plot_heatmaps_and_loss(
         interpolation="nearest",
     )
     ax_h1.set_title("(b) Training with Auxiliary Loss")
-    ax_h1.set_xlabel("Gradient Steps")
+    ax_h1.set_xlabel("Gradient Steps (Log Scale)")
     ax_h1.set_ylabel(r"$C_k$ Position")
     ax_h1.set_yticks(list(range(8)))
     ax_h1.set_yticklabels(
@@ -184,7 +184,7 @@ def plot_heatmaps_and_loss(
     ax_c0.set_ylim(top=2.5, bottom=-0.05)
     ax_c0.margins(y=0.05)
     ax_c0.set_ylabel(r"Loss (Per $c_k$ Position)")
-    ax_c0.set_xlabel("Gradient Steps")
+    ax_c0.set_xlabel("Gradient Steps (Log Scale)")
 
     ax_c1 = fig.add_subplot(gs[1, 1], sharex=ax_h1)
     P, S = loss_b.shape
@@ -211,7 +211,7 @@ def plot_heatmaps_and_loss(
     ax_c1.set_ylim(top=2.5, bottom=-0.05)
     ax_c1.margins(y=0.05)
     ax_c1.set_ylabel(r"Loss (Per $c_k$ Position)")
-    ax_c1.set_xlabel("Gradient Steps")
+    ax_c1.set_xlabel("Gradient Steps (Log Scale)")
 
     ax_c0.spines["top"].set_visible(False)
     ax_c0.spines["right"].set_visible(False)
@@ -269,7 +269,7 @@ def plot_heatmaps_and_loss(
         ax_g0.set_ylim(top=10, bottom=-0.05)
         ax_g0.margins(y=0.05)
         ax_g0.set_ylabel(r"Gradient Norm (Per $c_k$ Position)")
-        ax_g0.set_xlabel("Gradient Steps")
+        ax_g0.set_xlabel("Gradient Steps (Log Scale)")
         ax_g0.spines["top"].set_visible(False)
         ax_g0.spines["right"].set_visible(False)
         for s in ax_g0.spines.values():
@@ -300,11 +300,17 @@ def plot_heatmaps_and_loss(
         # ax_g1.set_ylim(top=1.5, bottom=-0.05)
         ax_g1.margins(y=0.05)
         ax_g1.set_ylabel(r"Gradient Norm (Per $c_k$ Position)")
-        ax_g1.set_xlabel("Gradient Steps")
+        ax_g1.set_xlabel("Gradient Steps (Log Scale)")
         ax_g1.spines["top"].set_visible(False)
         ax_g1.spines["right"].set_visible(False)
         for s in ax_g1.spines.values():
             s.set_zorder(0)
+
+    
+    ax_h0.set_xscale("log")
+    ax_h1.set_xscale("log")
+    ax_c0.set_xscale("log")
+    ax_c1.set_xscale("log")
 
     if out_path:
         fig.savefig(out_path, dpi=150, bbox_inches="tight")
