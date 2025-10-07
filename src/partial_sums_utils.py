@@ -10,9 +10,7 @@ def get_sum_of_kth_antidiagonal(matrix: Float[Array, "n n"], k: int) -> int:
     of 2*n elements.
     """
     n = matrix.shape[0]
-    assert (
-        k < 2 * n
-    ), f"The result is maximally {2*n} long, and you asked for {k}-th element."
+    assert 0 <= k < 2 * n, f"k must be in range [0, {2*n}), got {k}"
 
     return matrix.flip(dims=[0]).diagonal(offset=(n - 1) - k).sum().item()
 
@@ -44,6 +42,6 @@ def compute_partial_sums(a: str, b: str) -> list[int]:
     for i in range(num_partial_sums):
         s = get_sum_of_kth_antidiagonal(cartesian_product, k=i)
         c = s + r
-        r = (c + r) // 10
+        r = c // 10
         partial_sums.append(c)
     return partial_sums
