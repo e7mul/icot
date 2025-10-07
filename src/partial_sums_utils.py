@@ -1,10 +1,5 @@
-from typing import List
 import torch
 from jaxtyping import Array, Float
-
-
-def convert_str2ints_list(input: str) -> List[int]:
-    return
 
 
 def get_sum_of_kth_antidiagonal(matrix: Float[Array, "n n"], k: int) -> int:
@@ -22,7 +17,7 @@ def get_sum_of_kth_antidiagonal(matrix: Float[Array, "n n"], k: int) -> int:
     return matrix.flip(dims=[0]).diagonal(offset=(n - 1) - k).sum().item()
 
 
-def compute_partial_sums(a: str, b: str) -> List[int]:
+def compute_partial_sums(a: str, b: str) -> list[int]:
     """
     Computes partial sums for digit multiplication according to Eq. 1 & 2
     from: arxiv.org/abs/2510.00184
