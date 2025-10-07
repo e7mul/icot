@@ -1,6 +1,59 @@
+import os
+import copy
+
 from typing import List, Tuple
 import torch
-import re
+from torch.utils.data import Dataset
+from dataclasses import dataclass
+
+class PSDataset(Dataset):
+
+    def __init__(
+        self,
+        tokenizer,
+        file_path,
+        max_size=-1,
+        input_target_end_delimiter="&&&",
+        partial_sums_delimiter="&",
+    ):
+        assert os.path.isfile(file_path), f"Input file path {file_path} not found"
+        self.separator = tokenizer("###")["input_ids"][0]
+
+        with open(file_path, encoding="utf-8") as f:
+            lines = [
+                line.strip().split(input_target_end_delimiter) for line in f.readlines()
+            ]
+        if max_size > 0:
+            print(f"truncated to {max_size}")
+            lines = lines[:max_size]
+
+        self.examples_all = []
+        self.partial_sums_all = []
+        for data, partial_sums in lines:
+            self.partial_sums_all.append(
+                [int(i) for i in partial_sums.split(partial_sums_delimiter)]
+            )
+            # Make sure that all the tokens are of the form " x" to always map to the same token_id
+            if data[0] != " ":
+                data = " " + data
+            batch_encoding_all = tokenizer([data], add_special_tokens=True)
+            self.examples_all.append(batch_encoding_all["input_ids"][0])
+
+
+    def __len__(self):
+        return len(self.examples_all)
+
+    def __getitem__(self, i):
+        input_ids = self.examples_all[i]
+        partial_sums = self.partial_sums_all[i]
+        labels = copy.deepcopy(input_ids)
+        sep_idx = labels.index(self.separator) + 1
+        labels[:sep_idx] = [-100] * sep_idx
+        return (
+            torch.tensor(input_ids, dtype=torch.long),
+            torch.tensor(labels, dtype=torch.long),
+            torch.tensor(partial_sums, dtype=torch.float32)
+        )
 
 
 def format_tokens(tokens):
@@ -318,8 +371,27 @@ def prompt_ci_operands(
     ]
 
     # [batch, seq_len]
-    prompt_token_ids = tokenizer(prompt_txts, return_tensors="pt", padding=True).input_ids
+    prompt_token_ids = tokenizer(
+        prompt_txts, return_tensors="pt", padding=True
+    ).input_ids
     prompt_token_ids = prompt_token_ids.to(device)
     return prompt_txts, prompt_token_ids
 
 
+def get_dataloader(args, path, tokenizer):
+    dataset = CoTDataset(
+        tokenizer,
+        path,
+        args.truncation,
+        max_size=args.max_size,
+        remove_cot=args.remove_cot,
+        random_cot=args.random_cot,
+        keep_k_target=args.keep_k_target,
+    )
+
+    loader = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+    )
+    return loader

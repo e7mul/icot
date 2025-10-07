@@ -1,6 +1,6 @@
 import os
 
-from data_utils import compute_partial_sums
+from partial_sums_utils import compute_partial_sums
 
 path = "data/4_by_4_mult_no_cot"
 
@@ -19,9 +19,10 @@ for name in ["test_bigbench", "train", "valid"]:
         partial_sums = compute_partial_sums(a, b)
         new_line = (
             line[0]
-            + "%%% "
-            + "& ".join(str(partial_sum) for partial_sum in partial_sums)
+            + "%%%"
             + line[1]
+            + "&&&"
+            + "& ".join(str(partial_sum) for partial_sum in partial_sums)
             + "\n"
         )
         new_lines.append(new_line)

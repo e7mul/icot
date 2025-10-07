@@ -101,9 +101,9 @@ def load_hf_model(config_path, state_dict_path, cpu=False):
     config = ImplicitModelConfig(**config_dict)  # Convert dict to config object
     model = ImplicitModel(config)
     if cpu:
-        model.load_state_dict(torch.load(state_dict_path, map_location="cpu"))
+        model.load_state_dict(torch.load(state_dict_path, map_location="cpu", weights_only=False))
     else:
-        model.load_state_dict(torch.load(state_dict_path))
+        model.load_state_dict(torch.load(state_dict_path, weights_only=False))
     model.eval()
     tokenizer = model.tokenizer
     tokenizer.pad_token = tokenizer.eos_token
