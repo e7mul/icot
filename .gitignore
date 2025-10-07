@@ -3,6 +3,10 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# directories with datasets
+data/
+dataset/
+
 # C extensions
 *.so
 
