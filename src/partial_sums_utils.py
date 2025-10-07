@@ -3,11 +3,11 @@ import torch
 from jaxtyping import Array, Float
 
 
-def convert_str2ints_list(input: int) -> List[int]:
-    return [int(character) for character in str(input)]
+def convert_str2ints_list(input: str) -> List[int]:
+    return
 
 
-def get_sum_of_kth_antidiagonal(matrix: Float[Array, "n n"], k: int) -> List[int]:
+def get_sum_of_kth_antidiagonal(matrix: Float[Array, "n n"], k: int) -> int:
     """
     Returns the sum of the elements on the k-th antidiagonal of a matrix.
 
@@ -16,8 +16,8 @@ def get_sum_of_kth_antidiagonal(matrix: Float[Array, "n n"], k: int) -> List[int
     """
     n = matrix.shape[0]
     assert (
-        k <= 2 * n
-    ), f"The result is maximmaly {2*n} long, and you asked for {k}-th element."
+        k < 2 * n
+    ), f"The result is maximally {2*n} long, and you asked for {k}-th element."
 
     return matrix.flip(dims=[0]).diagonal(offset=(n - 1) - k).sum().item()
 
@@ -33,10 +33,14 @@ def compute_partial_sums(a: str, b: str) -> List[int]:
     r_{-1} = 0
 
     """
+    if len(a) != len(b):
+        raise ValueError(
+            f"Input string must have equal length, got {len(a)} and {len(b)}"
+        )
     digit_length = len(a)
 
-    a_as_tensor = torch.tensor(convert_str2ints_list(a))
-    b_as_tensor = torch.tensor(convert_str2ints_list(b))
+    a_as_tensor = torch.tensor([int(character) for character in a])
+    b_as_tensor = torch.tensor([int(character) for character in b])
 
     cartesian_product = torch.outer(a_as_tensor, b_as_tensor)
     num_partial_sums = 2 * digit_length - 1

@@ -10,7 +10,7 @@ for name in ["test_bigbench", "train", "valid"]:
     with open(file_path, encoding="utf-8") as f:
         lines = [line.strip().split("%%%") for line in f.readlines()]
     new_lines = []
-    counter = 0
+
     for line in lines:
         operands = line[0]
         a, b = operands.split("*")
