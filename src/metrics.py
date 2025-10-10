@@ -73,10 +73,10 @@ class Metrics:
 
     def print_metrics_average(self, step, **kwargs):
         try:
-            avg_ppl = math.exp(self.token_loss)
+            avg_ppl = math.exp(self.token_loss / self.tokens)
         except OverflowError:
             avg_ppl = math.inf
-        part_sum_loss = self.partial_sums_loss
+        part_sum_loss = self.partial_sums_loss / self.instances
         extra_metrics = " ".join(f"{k}: {v}" for k, v in kwargs.items())
         print(
             f"Step: {step}. PPL: {avg_ppl}, PartSums: {part_sum_loss:.3f}, {extra_metrics}"
@@ -109,22 +109,23 @@ class MetricTracker:
             f"PPL: {round(self.ppl.get(timestep, 'N/A'), 3)}",
             f"MSE: {round(self.mse.get(timestep, 'N/A'), 3)}",
             f"Accuracy: {round(self.accuracy.get(timestep, 'N/A'), 2)}",
-            f"Token Accuracy: {round(self.token_accuracy.get(timestep, 'N/A').item(), 2)}",
+            f"Token Accuracy: {round(self.token_accuracy.get(timestep, 'N/A'), 2)}",
             f"Ans Token Accuracy: {round(self.ans_token_accuracy.get(timestep, 'N/A'), 2)}",
         ]
         print(f"{name} -- " + "; ".join(metrics) + ".")
 
     def save_as_json(self, path):
-        json.dump(
-            {
-                "accuracy": self.accuracy,
-                "token_accuracy": self.token_accuracy,
-                "ppl": self.ppl,
-                "mse": self.mse,
-                "ans_token_accuracy": self.ans_token_accuracy,
-            },
-            open(path, "w"),
-        )
+        with open(path, "w") as f:
+            json.dump(
+                {
+                    "accuracy": self.accuracy,
+                    "token_accuracy": self.token_accuracy,
+                    "ppl": self.ppl,
+                    "mse": self.mse,
+                    "ans_token_accuracy": self.ans_token_accuracy,
+                },
+                f,
+            )
 
 
 # Convert numpy arrays and tensors to lists for JSON serialization
@@ -141,14 +142,19 @@ def convert_for_json(obj):
         return obj
 
 
-def save_metrics(metrics_to_save: dict[str, MetricTracker], save_dir: [str]):
-    """Save training, validation, test metrics, and logits norm to disk."""
+def save_metrics(metrics_to_save: dict[str, MetricTracker], save_dir: str):
+    """
+    Save tracked metrics to disk in both JSON and CSV formats.
+    metrics_to_save: mapping from metric name to its MetricTracker
+    save_dir: directory path where metric files will be written
+    """
     for fname, data in metrics_to_save.items():
         filepath = os.path.join(save_dir, f"{fname}_metric_tracker.json")
         data_to_save = {
             "accuracy": data.accuracy,
             "token_accuracy": data.token_accuracy,
             "ppl": data.ppl,
+            "mse": data.mse,
             "ans_token_accuracy": data.ans_token_accuracy,
         }
         with open(filepath, "w") as f:

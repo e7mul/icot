@@ -56,9 +56,8 @@ def single_train_loop(model, tokenizer, optimizer, train_loader, step):
         optimizer.zero_grad(set_to_none=True)
         metrics.update(outputs, batch_size)
 
-        if step % 10 == 0:
+        if step % 100 == 0:
             metrics.print_metrics_average(step)
-            # save_model_and_optimizer(model, optimizer, args, rank, step)
         step += 1
 
     return metrics, step
@@ -114,8 +113,15 @@ def main():
     parser.add_argument("--max_size", type=int, default=-1)
     parser.add_argument("--save_model", type=str, required=True)
     parser.add_argument("--save_config", type=str, required=True)
-    parser.add_argument("--seed", type=int, default=1234)
     args = parser.parse_args()
+
+    # Set random seeds for reproducibility
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+
+    os.makedirs(args.save_config, exist_ok=True)
 
     os.makedirs(args.save_config, exist_ok=True)
     json.dump(args.__dict__, open(os.path.join(args.save_config, "args.json"), "w"))

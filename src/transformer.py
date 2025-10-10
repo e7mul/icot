@@ -20,6 +20,7 @@ ACT2FN = {
 class Accuracies:
     token_accuracy: float | None = None
     total_correct_answers: int | None = None
+    total_correct: int | None = None
     correct_ans_tokens: int | None = None
     total_ans_tokens: int | None = None
     total_tokens: int | None = None
@@ -403,24 +404,24 @@ class Transformer(nn.Module):
         )
         accuracies = compute_accuracies(logits, target_tokens, separator_position)
 
-        losses = Losses
+        losses = Losses()
         losses.combined_loss = tokens_loss  # + partial_sums_loss
         losses.token_loss = tokens_loss
         losses.partial_sums_loss = partial_sums_loss
 
-        out = Output
-        out.acc = accuracies
-        out.losses = losses
+        out = Output(losses=losses, acc=accuracies)
         return out
 
     def compute_partial_sums_loss(
         self,
-        attention_maps: list[Float[Array, "batch_size seq_len n_heads hid_dim"]],
+        attention_maps: Float[Array, "batch_size seq_len n_heads hid_dim"],
         partial_sums: Float[Array, "batch_size num_partial_sums"],
         sep_pos: int,
     ) -> torch.Tensor:
         attention_maps = attention_maps[:, sep_pos + 1 : -1, ...]
-        total_loss = 0
+        total_loss = torch.tensor(
+            0.0, device=attention_maps.device, dtype=attention_maps.dtype
+        )
         for head_idx, linear_probe in self.partial_sum_predictors.items():
             output = linear_probe(attention_maps[..., int(head_idx), :]).squeeze(2)
             assert (
@@ -435,7 +436,7 @@ def compute_accuracies(
     labels: Float[Array, "batch_size seq_len"],
     separator_position: int,
 ) -> Accuracies:
-    acc = Accuracies
+    acc = Accuracies()
 
     ans_preds = logits[..., separator_position:-1, :].argmax(
         -1
@@ -443,7 +444,7 @@ def compute_accuracies(
     ans_labels = labels[
         ..., separator_position + 1 :
     ]  # here we add +1 as labels[..., sep_position] is the second-to-last EoS token
-    acc.correct_ans_tokens = (ans_preds == ans_labels).sum()
+    acc.correct_ans_tokens = (ans_preds == ans_labels).sum().item()
 
     # the code below computes how many fully correct answers are there in the batch
     acc.total_ans_tokens = (ans_labels != -100).sum()

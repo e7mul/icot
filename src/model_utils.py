@@ -113,10 +113,10 @@ def load_hf_model(config_path, state_dict_path, cpu=False):
     return model, tokenizer
 
 
-def load_c_hat_model(model_path):
-    model, tokenizer, config = create_c_hat_model()
+def load_c_hat_model(model_path, device):
+    model, tokenizer, config = create_c_hat_model(device)
     # Load the state dict to inspect what aux heads were used
-    state_dict = torch.load(model_path, map_location="cuda")
+    state_dict = torch.load(model_path, map_location=device)
 
     # Extract aux_heads from the state dict keys
     aux_heads = []
