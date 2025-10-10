@@ -444,7 +444,7 @@ def compute_accuracies(
     ans_labels = labels[
         ..., separator_position + 1 :
     ]  # here we add +1 as labels[..., sep_position] is the second-to-last EoS token
-    acc.correct_ans_tokens = (ans_preds == ans_labels).sum().item()
+    acc.correct_ans_tokens = (ans_preds == ans_labels).sum()
 
     # the code below computes how many fully correct answers are there in the batch
     acc.total_ans_tokens = (ans_labels != -100).sum()

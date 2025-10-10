@@ -113,6 +113,7 @@ def main():
     parser.add_argument("--max_size", type=int, default=-1)
     parser.add_argument("--save_model", type=str, required=True)
     parser.add_argument("--save_config", type=str, required=True)
+    parser.add_argument("--seed", type=int, required=True)
     args = parser.parse_args()
 
     # Set random seeds for reproducibility

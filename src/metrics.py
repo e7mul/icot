@@ -65,7 +65,7 @@ class Metrics:
         self.partial_sums_loss += outputs.losses.partial_sums_loss.item()
         self.token_loss += outputs.losses.token_loss.item()
         self.correct_tokens += outputs.acc.total_correct.item()
-        self.tokens += outputs.acc.total_tokens
+        self.tokens += outputs.acc.total_tokens.item()
         self.instances += batch_size
         self.correct_answers += outputs.acc.total_correct_answers.item()
         self.correct_ans_tokens += outputs.acc.correct_ans_tokens.item()
