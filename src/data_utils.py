@@ -3,8 +3,9 @@ import copy
 
 from typing import List, Tuple
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from dataclasses import dataclass
+
 
 class PSDataset(Dataset):
 
@@ -39,7 +40,6 @@ class PSDataset(Dataset):
             batch_encoding_all = tokenizer([data], add_special_tokens=True)
             self.examples_all.append(batch_encoding_all["input_ids"][0])
 
-
     def __len__(self):
         return len(self.examples_all)
 
@@ -52,8 +52,18 @@ class PSDataset(Dataset):
         return (
             torch.tensor(input_ids, dtype=torch.long),
             torch.tensor(labels, dtype=torch.long),
-            torch.tensor(partial_sums, dtype=torch.float32)
+            torch.tensor(partial_sums, dtype=torch.float32),
         )
+
+
+@dataclass
+class Data:
+    train_loader: torch.utils.data.DataLoader | None = None
+    train_sampler: torch.utils.data.Sampler | None = None
+    val_loader: torch.utils.data.DataLoader | None = None
+    val_sampler: torch.utils.data.Sampler | None = None
+    test_loader: torch.utils.data.DataLoader | None = None
+    test_sampler: torch.utils.data.Sampler | None = None
 
 
 def format_tokens(tokens):
@@ -379,14 +389,11 @@ def prompt_ci_operands(
 
 
 def get_dataloader(args, path, tokenizer):
-    dataset = CoTDataset(
+    sampler = None  # for know we don't need sampler as we don't use Distributed Env
+    dataset = PSDataset(
         tokenizer,
         path,
-        args.truncation,
         max_size=args.max_size,
-        remove_cot=args.remove_cot,
-        random_cot=args.random_cot,
-        keep_k_target=args.keep_k_target,
     )
 
     loader = DataLoader(
@@ -394,4 +401,18 @@ def get_dataloader(args, path, tokenizer):
         batch_size=args.batch_size,
         shuffle=True,
     )
-    return loader
+    return loader, sampler
+
+
+def get_loaders(args, tokenizer):
+    train_loader, train_sampler = get_dataloader(args, args.train_path, tokenizer)
+    val_loader, val_sampler = get_dataloader(args, args.val_path, tokenizer)
+    test_loader, test_sampler = get_dataloader(args, args.test_path, tokenizer)
+    return Data(
+        train_loader=train_loader,
+        train_sampler=train_sampler,
+        val_loader=val_loader,
+        val_sampler=val_sampler,
+        test_loader=test_loader,
+        test_sampler=test_sampler,
+    )

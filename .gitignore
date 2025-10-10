@@ -6,6 +6,7 @@ __pycache__/
 # directories with datasets
 data/
 dataset/
+results/
 
 # C extensions
 *.so

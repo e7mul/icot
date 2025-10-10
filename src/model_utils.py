@@ -1,3 +1,4 @@
+import os
 import json
 import torch
 import torch.nn as nn
@@ -101,7 +102,9 @@ def load_hf_model(config_path, state_dict_path, cpu=False):
     config = ImplicitModelConfig(**config_dict)  # Convert dict to config object
     model = ImplicitModel(config)
     if cpu:
-        model.load_state_dict(torch.load(state_dict_path, map_location="cpu", weights_only=False))
+        model.load_state_dict(
+            torch.load(state_dict_path, map_location="cpu", weights_only=False)
+        )
     else:
         model.load_state_dict(torch.load(state_dict_path, weights_only=False))
     model.eval()
@@ -111,20 +114,7 @@ def load_hf_model(config_path, state_dict_path, cpu=False):
 
 
 def load_c_hat_model(model_path):
-    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = "left"
-    device = "cuda"
-    config = TransformerConfig(
-        hidden_dim=768,
-        depth=2,
-        n_heads=4,
-        vocab_size=tokenizer.vocab_size,
-        max_seq_len=128,
-        device="cuda",
-    )
-    model = Transformer(config).to(device)
-
+    model, tokenizer, config = create_c_hat_model()
     # Load the state dict to inspect what aux heads were used
     state_dict = torch.load(model_path, map_location="cuda")
 
@@ -140,12 +130,31 @@ def load_c_hat_model(model_path):
     # Add the linear regression heads
     attn_dim = config.hidden_dim // config.n_heads  # 768 // 4 = 192
     model.linear_regression_heads = torch.nn.ModuleDict(
-        {str(h): torch.nn.Linear(attn_dim, 1, bias=False).to(device) for h in aux_heads}
+        {
+            str(h): torch.nn.Linear(attn_dim, 1, bias=False).to(model.device)
+            for h in aux_heads
+        }
     )
 
     model.load_state_dict(state_dict)
     model.eval()
     return HFCompat(model), tokenizer
+
+
+def create_c_hat_model(device):
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
+    config = TransformerConfig(
+        hidden_dim=768,
+        depth=2,
+        n_heads=4,
+        vocab_size=tokenizer.vocab_size,
+        max_seq_len=128,
+        device=device,
+    )
+    model = Transformer(config).to(device)
+    return model, tokenizer, config
 
 
 class HFCompat(nn.Module):
@@ -159,3 +168,14 @@ class HFCompat(nn.Module):
             logits, attn = out
             return types.SimpleNamespace(logits=logits, attn=attn)
         return types.SimpleNamespace(logits=out)
+
+
+def save_model_and_optimizer(model, optimizer, args, ckpt_idx):
+    print("Saving model and optimizer...")
+    ckpt_path = os.path.join(args.save_model, f"checkpoint_{ckpt_idx}.pt")
+    optim_path = os.path.join(args.save_model, f"optimizer_{ckpt_idx}.pt")
+    os.makedirs(args.save_model, exist_ok=True)
+    torch.save(model.state_dict(), ckpt_path)
+    optimizer_state_dict = optimizer.state_dict()
+    torch.save(optimizer_state_dict, optim_path)
+    print(f"Saved model and optimizer to {ckpt_path}")

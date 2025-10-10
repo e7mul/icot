@@ -3,6 +3,9 @@ from typing import Optional, Any
 from dataclasses import dataclass
 import einops
 from fancy_einsum import einsum
+from jaxtyping import Float, Array
+from torch.nn import CrossEntropyLoss
+from src.ActivationCache import record_activations
 
 # helper
 ACT2FN = {
@@ -11,6 +14,28 @@ ACT2FN = {
     "silu": F.silu,
     "swish": F.silu,
 }
+
+
+@dataclass
+class Accuracies:
+    token_accuracy: float | None = None
+    total_correct_answers: int | None = None
+    correct_ans_tokens: int | None = None
+    total_ans_tokens: int | None = None
+    total_tokens: int | None = None
+
+
+@dataclass
+class Losses:
+    combined_loss: float | None = None
+    token_loss: float | None = None
+    partial_sums_loss: float | None = None
+
+
+@dataclass
+class Output:
+    losses: Losses
+    acc: Accuracies
 
 
 @dataclass
@@ -25,6 +50,7 @@ class AttentionConfig:
 class HookPoint(nn.Module):
     def __init__(self):
         super().__init__()
+
     def forward(self, x):
         return x
 
@@ -82,9 +108,7 @@ class Attention(nn.Module):  # BSD -> BSD
         # Hook attention pattern: [B, nh, S, S]
         A = self.hook_attn_pattern(A)
 
-        preout = torch.einsum(
-            "bnxy,bnyd->bnxd", A, V
-        )  # [B, nh, S, hd]
+        preout = torch.einsum("bnxy,bnyd->bnxd", A, V)  # [B, nh, S, hd]
 
         W_O = einops.rearrange(
             self.Wo.weight.T,
@@ -98,7 +122,9 @@ class Attention(nn.Module):  # BSD -> BSD
         )  # [B, nh, S, D]
         # Reorder to [B, S, nh, D] and hook
         attn_output_per_head_seq = attn_output_per_head.transpose(1, 2)
-        attn_output_per_head_seq = self.hook_attn_output_per_head(attn_output_per_head_seq)
+        attn_output_per_head_seq = self.hook_attn_output_per_head(
+            attn_output_per_head_seq
+        )
         # Sum across heads -> [B, S, D]
         attn_out = attn_output_per_head_seq.sum(dim=2)
         return attn_out  # [B, S, D]
@@ -322,6 +348,12 @@ class Transformer(nn.Module):
         for i, layer in enumerate(self.layers):
             layer.attn.layer_idx = i
 
+        self.partial_sum_predictors = nn.ModuleDict(
+            modules={
+                str(head_idx): nn.Linear(self.hidden_dim, 1)
+                for head_idx in range(config.n_heads)
+            }
+        )
         self.device = config.device
 
     def forward(
@@ -350,4 +382,91 @@ class Transformer(nn.Module):
         logits = self.unemb(x)
         if return_attn:
             return logits, torch.stack(all_attn, dim=0)
-        return logits
+        return logits, None
+
+    def compute_loss(
+        self,
+        input_tokens: Float[Array, "batch_size seq_len"],
+        target_tokens: Float[Array, "batch_size seq_len"],
+        partial_sums: Float[Array, "batch_size num_partials"],
+        separator_position: int,
+        module_for_attns="layers.1.attn.hook_attn_output_per_head",
+    ):
+
+        with record_activations(self, module_names=[module_for_attns]) as activs_cache:
+            logits, attentions = self.forward(input_tokens)
+        attentions = activs_cache[module_for_attns]
+
+        tokens_loss = compute_next_token_loss(logits, target_tokens)
+        partial_sums_loss = self.compute_partial_sums_loss(
+            attentions, partial_sums, sep_pos=separator_position
+        )
+        accuracies = compute_accuracies(logits, target_tokens, separator_position)
+
+        losses = Losses
+        losses.combined_loss = tokens_loss  # + partial_sums_loss
+        losses.token_loss = tokens_loss
+        losses.partial_sums_loss = partial_sums_loss
+
+        out = Output
+        out.acc = accuracies
+        out.losses = losses
+        return out
+
+    def compute_partial_sums_loss(
+        self,
+        attention_maps: list[Float[Array, "batch_size seq_len n_heads hid_dim"]],
+        partial_sums: Float[Array, "batch_size num_partial_sums"],
+        sep_pos: int,
+    ) -> torch.Tensor:
+        attention_maps = attention_maps[:, sep_pos + 1 : -1, ...]
+        total_loss = 0
+        for head_idx, linear_probe in self.partial_sum_predictors.items():
+            output = linear_probe(attention_maps[..., int(head_idx), :]).squeeze(2)
+            assert (
+                output.shape == partial_sums.shape
+            ), f"Inconsistent shapes when computing MSE Loss. Output {output.shape}, Partial sums: {partial_sums.shape}"
+            total_loss += torch.nn.functional.mse_loss(output, partial_sums)
+        return total_loss
+
+
+def compute_accuracies(
+    logits: Float[Array, "batch_size seq_len vocab_size"],
+    labels: Float[Array, "batch_size seq_len"],
+    separator_position: int,
+) -> Accuracies:
+    acc = Accuracies
+
+    ans_preds = logits[..., separator_position:-1, :].argmax(
+        -1
+    )  # the last input token is <|endoftext|> thus, we don't care what models predicts for it
+    ans_labels = labels[
+        ..., separator_position + 1 :
+    ]  # here we add +1 as labels[..., sep_position] is the second-to-last EoS token
+    acc.correct_ans_tokens = (ans_preds == ans_labels).sum()
+
+    # the code below computes how many fully correct answers are there in the batch
+    acc.total_ans_tokens = (ans_labels != -100).sum()
+    correct_per_row = (ans_preds == ans_labels).sum(-1)
+    acc.total_correct_answers = (correct_per_row == ans_labels.shape[-1]).sum()
+
+    labels_pred = logits.argmax(-1)
+    mask = labels[..., 1:].ge(0)
+    correct_tokens = ((labels_pred[..., :-1] == labels[..., 1:]) * mask).sum()
+    acc.total_correct = correct_tokens
+    acc.total_tokens = mask.sum()
+    acc.token_accuracy = correct_tokens / acc.total_tokens
+    return acc
+
+
+def compute_next_token_loss(
+    logits: Float[Array, "batch_size seq_len vocab_size"],
+    target_tokens: Float[Array, "batch_size seq_len"],
+) -> torch.Tensor:
+    # when comparing target_tokens with predictions we skip the first target_token as it is already sent as the input to the model
+    # and we don't care about the last prediction of the model as it predict the next token after <|endoftext|>
+    shift_logits = logits[..., :-1, :].contiguous()
+    shift_labels = target_tokens[..., 1:].contiguous()
+    loss_fct = CrossEntropyLoss()
+    loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+    return loss
