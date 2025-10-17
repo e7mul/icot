@@ -98,7 +98,9 @@ def _get_module(model: nn.Module, name: str) -> nn.Module:
     raise LookupError(name)
 
 
-def _create_read_hook(layer_name: str, records: dict[str, list[Tensor]]) -> Any:
+def _create_read_hook(
+    layer_name: str, records: dict[str, list[Tensor]], detach_activations: bool
+) -> Any:
     """Create a hook function that records the model activation at :layer_name:"""
 
     def hook_fn(_module: Any, _inputs: Any, _outputs: Any) -> Any:
@@ -110,8 +112,11 @@ def _create_read_hook(layer_name: str, records: dict[str, list[Tensor]]) -> Any:
                 f"Expected a Tensor reading model activations, got {type(activation)}"
             )
 
-        _activation = activation.clone().detach()
-        records[layer_name].append(_activation)
+        if detach_activations:
+            _activation = activation.clone().detach()
+            records[layer_name].append(_activation)
+        else:
+            records[layer_name].append(activation)
         return _outputs
 
     return hook_fn
@@ -121,6 +126,7 @@ def _create_read_hook(layer_name: str, records: dict[str, list[Tensor]]) -> Any:
 def record_activations(
     model: nn.Module,
     module_names: list[str],
+    detach_activations: bool = True,
 ) -> Generator[dict[str, list[Tensor]], None, None]:
     """
     Record the model activations at each layer of type `layer_type`.
@@ -143,8 +149,7 @@ def record_activations(
 
         # hook_fn: hook(module, input, output)
         hook_fn = _create_read_hook(
-            _module_name,
-            recorded_activations,
+            _module_name, recorded_activations, detach_activations
         )
         handle = module.register_forward_hook(hook_fn)
         hooks.append(handle)

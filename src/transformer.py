@@ -28,7 +28,6 @@ class Accuracies:
 
 @dataclass
 class Losses:
-    combined_loss: float | None = None
     token_loss: float | None = None
     partial_sums_loss: float | None = None
 
@@ -394,7 +393,9 @@ class Transformer(nn.Module):
         module_for_attns="layers.1.attn.hook_attn_output_per_head",
     ):
 
-        with record_activations(self, module_names=[module_for_attns]) as activs_cache:
+        with record_activations(
+            self, module_names=[module_for_attns], detach_activations=False
+        ) as activs_cache:
             logits, attentions = self.forward(input_tokens)
         attentions = activs_cache[module_for_attns]
 
@@ -405,7 +406,6 @@ class Transformer(nn.Module):
         accuracies = compute_accuracies(logits, target_tokens, separator_position)
 
         losses = Losses()
-        losses.combined_loss = tokens_loss  # + partial_sums_loss
         losses.token_loss = tokens_loss
         losses.partial_sums_loss = partial_sums_loss
 

@@ -12,7 +12,6 @@ class Metrics:
     tokens: int = 0
     correct_tokens: int = 0
     correct_answers: int = 0
-    combined_loss: float = 0.0
     token_loss: float = 0.0
     partial_sums_loss: float = 0.0
     correct_ans_tokens: int = 0
@@ -21,7 +20,6 @@ class Metrics:
     def to_tensor(self, device, dtype=torch.float32):
         return torch.tensor(
             [
-                self.combined_loss,
                 self.token_loss,
                 self.partial_sums_loss,
                 float(self.correct_tokens),
@@ -38,7 +36,6 @@ class Metrics:
     @classmethod
     def from_tensor(cls, t):
         (
-            combined_loss,
             token_loss,
             partial_sums_loss,
             correct_tokens,
@@ -53,7 +50,6 @@ class Metrics:
             tokens=int(tokens),
             correct_tokens=int(correct_tokens),
             correct_answers=int(correct_answers),
-            combined_loss=float(combined_loss),
             token_loss=float(token_loss),
             partial_sums_loss=float(partial_sums_loss),
             correct_ans_tokens=int(correct_ans_tokens),
@@ -61,7 +57,6 @@ class Metrics:
         )
 
     def update(self, outputs, batch_size):
-        self.combined_loss += outputs.losses.combined_loss.item()
         self.partial_sums_loss += outputs.losses.partial_sums_loss.item()
         self.token_loss += outputs.losses.token_loss.item()
         self.correct_tokens += outputs.acc.total_correct.item()
@@ -95,11 +90,11 @@ class MetricTracker:
         self.accuracy[timestep] = metrics.correct_answers / metrics.instances
         self.token_accuracy[timestep] = metrics.correct_tokens / metrics.tokens
         try:
-            ppl = float(math.exp(metrics.token_loss))
+            ppl = float(math.exp(metrics.token_loss / metrics.tokens))
         except OverflowError:
             ppl = math.inf
         self.ppl[timestep] = ppl
-        self.mse[timestep] = metrics.partial_sums_loss
+        self.mse[timestep] = metrics.partial_sums_loss / metrics.instances
         self.ans_token_accuracy[timestep] = (
             metrics.correct_ans_tokens / metrics.ans_tokens
         )

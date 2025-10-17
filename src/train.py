@@ -21,7 +21,7 @@ from src.metrics import (
 def evaluate(model, tokenizer, dataloader):
     model.eval()
     metrics = Metrics()
-    for input_ids, labels, partial_sums in tqdm(dataloader):
+    for input_ids, labels, partial_sums in dataloader:
         sep_pos = get_sep_position(tokenizer, input_ids)
         input_ids = input_ids.to(model.device)
         labels = labels.to(model.device)
@@ -39,7 +39,7 @@ def get_sep_position(tokenizer, input_ids):
     return sep_pos
 
 
-def single_train_loop(model, tokenizer, optimizer, train_loader, step):
+def single_train_loop(model, tokenizer, optimizer, train_loader, step, p_lambda):
     metrics = Metrics()
     for input_ids, labels, partial_sums in train_loader:
         sep_pos = get_sep_position(tokenizer, input_ids)
@@ -50,7 +50,7 @@ def single_train_loop(model, tokenizer, optimizer, train_loader, step):
         outputs = model.compute_loss(
             input_ids, labels, partial_sums, separator_position=sep_pos
         )
-        loss = outputs.losses.combined_loss
+        loss = outputs.losses.token_loss + p_lambda * outputs.losses.partial_sums_loss
         loss.backward()
         optimizer.step()
         optimizer.zero_grad(set_to_none=True)
@@ -67,7 +67,7 @@ def train(args, model, tokenizer, optimizer, datasets):
     step = 0
     best_val_accuracy = float("-inf")
     trackers = {key: MetricTracker() for key in ["train", "val", "test"]}
-    for epoch in trange(args.epochs, desc="Epochs"):
+    for epoch in range(args.epochs):
         model.train()
         train_metrics, step = single_train_loop(
             model,
@@ -75,6 +75,7 @@ def train(args, model, tokenizer, optimizer, datasets):
             optimizer,
             datasets.train_loader,
             step,
+            args.partial_sums_lambda,
         )
 
         trackers["train"].update(train_metrics, epoch)
@@ -114,6 +115,7 @@ def main():
     parser.add_argument("--save_model", type=str, required=True)
     parser.add_argument("--save_config", type=str, required=True)
     parser.add_argument("--seed", type=int, required=True)
+    parser.add_argument("--partial_sums_lambda", type=float, default=0.0)
     args = parser.parse_args()
 
     # Set random seeds for reproducibility
@@ -121,8 +123,6 @@ def main():
     np.random.seed(args.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
-
-    os.makedirs(args.save_config, exist_ok=True)
 
     os.makedirs(args.save_config, exist_ok=True)
     json.dump(args.__dict__, open(os.path.join(args.save_config, "args.json"), "w"))
