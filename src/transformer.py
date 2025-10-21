@@ -30,6 +30,7 @@ class Accuracies:
 class Losses:
     token_loss: float | None = None
     partial_sums_loss: float | None = None
+    per_token_loss: float | None = None
 
 
 @dataclass
@@ -399,15 +400,16 @@ class Transformer(nn.Module):
             logits, attentions = self.forward(input_tokens)
         attentions = activs_cache[module_for_attns]
 
-        tokens_loss = compute_next_token_loss(logits, target_tokens)
+        per_token_loss = compute_next_token_loss(logits, target_tokens)
         partial_sums_loss = self.compute_partial_sums_loss(
             attentions, partial_sums, sep_pos=separator_position
         )
         accuracies = compute_accuracies(logits, target_tokens, separator_position)
 
         losses = Losses()
-        losses.token_loss = tokens_loss
+        losses.token_loss = per_token_loss.mean()
         losses.partial_sums_loss = partial_sums_loss
+        losses.per_token_loss = per_token_loss
 
         out = Output(losses=losses, acc=accuracies)
         return out
@@ -468,6 +470,7 @@ def compute_next_token_loss(
     # and we don't care about the last prediction of the model as it predict the next token after <|endoftext|>
     shift_logits = logits[..., :-1, :].contiguous()
     shift_labels = target_tokens[..., 1:].contiguous()
-    loss_fct = CrossEntropyLoss()
+    loss_fct = CrossEntropyLoss(reduction="none")
     loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+    loss = loss.view(shift_labels.shape).mean(dim=0)
     return loss

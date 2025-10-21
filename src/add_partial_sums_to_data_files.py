@@ -16,6 +16,9 @@ for name in ["test_bigbench", "train", "valid"]:
         a, b = operands.split("*")
         a = a.replace(" ", "")
         b = b.replace(" ", "")
+        # we reverse the numbers as the dataset is built with reversed order to facilitate causal-RASP
+        a = a[::-1]
+        b = b[::-1]
         partial_sums = compute_partial_sums(a, b)
         new_line = (
             line[0]

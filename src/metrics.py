@@ -5,6 +5,8 @@ import math
 import json
 import numpy as np
 
+from dataclasses import dataclass, field
+
 
 @dataclass
 class Metrics:
@@ -13,48 +15,10 @@ class Metrics:
     correct_tokens: int = 0
     correct_answers: int = 0
     token_loss: float = 0.0
+    per_token_loss: list[float] = field(default_factory=list)
     partial_sums_loss: float = 0.0
     correct_ans_tokens: int = 0
     ans_tokens: int = 0
-
-    def to_tensor(self, device, dtype=torch.float32):
-        return torch.tensor(
-            [
-                self.token_loss,
-                self.partial_sums_loss,
-                float(self.correct_tokens),
-                float(self.tokens),
-                float(self.instances),
-                float(self.correct_answers),
-                float(self.correct_ans_tokens),
-                float(self.ans_tokens),
-            ],
-            dtype=dtype,
-            device=device,
-        )
-
-    @classmethod
-    def from_tensor(cls, t):
-        (
-            token_loss,
-            partial_sums_loss,
-            correct_tokens,
-            tokens,
-            instances,
-            correct_answers,
-            correct_ans_tokens,
-            ans_tokens,
-        ) = t.tolist()
-        return cls(
-            instances=int(instances),
-            tokens=int(tokens),
-            correct_tokens=int(correct_tokens),
-            correct_answers=int(correct_answers),
-            token_loss=float(token_loss),
-            partial_sums_loss=float(partial_sums_loss),
-            correct_ans_tokens=int(correct_ans_tokens),
-            ans_tokens=int(ans_tokens),
-        )
 
     def update(self, outputs, batch_size):
         self.partial_sums_loss += outputs.losses.partial_sums_loss.item()
@@ -65,6 +29,11 @@ class Metrics:
         self.correct_answers += outputs.acc.total_correct_answers.item()
         self.correct_ans_tokens += outputs.acc.correct_ans_tokens.item()
         self.ans_tokens += outputs.acc.total_ans_tokens.item()
+        for idx, element in enumerate(outputs.losses.per_token_loss):
+            try:
+                self.per_token_loss[idx] += element.item()
+            except IndexError:
+                self.per_token_loss.append(element.item())
 
     def print_metrics_average(self, step, **kwargs):
         try:
@@ -85,8 +54,12 @@ class MetricTracker:
         self.ppl = {}
         self.mse = {}
         self.ans_token_accuracy = {}
+        self.per_token_loss = {}
 
     def update(self, metrics, timestep):
+        self.per_token_loss[timestep] = [
+            round(i / metrics.instances, 3) for i in metrics.per_token_loss
+        ]
         self.accuracy[timestep] = metrics.correct_answers / metrics.instances
         self.token_accuracy[timestep] = metrics.correct_tokens / metrics.tokens
         try:
@@ -108,19 +81,7 @@ class MetricTracker:
             f"Ans Token Accuracy: {round(self.ans_token_accuracy.get(timestep, 'N/A'), 2)}",
         ]
         print(f"{name} -- " + "; ".join(metrics) + ".")
-
-    def save_as_json(self, path):
-        with open(path, "w") as f:
-            json.dump(
-                {
-                    "accuracy": self.accuracy,
-                    "token_accuracy": self.token_accuracy,
-                    "ppl": self.ppl,
-                    "mse": self.mse,
-                    "ans_token_accuracy": self.ans_token_accuracy,
-                },
-                f,
-            )
+        print(f"Per token loss: {self.per_token_loss.get(timestep, 'N/A')}")
 
 
 # Convert numpy arrays and tensors to lists for JSON serialization
@@ -151,6 +112,7 @@ def save_metrics(metrics_to_save: dict[str, MetricTracker], save_dir: str):
             "ppl": data.ppl,
             "mse": data.mse,
             "ans_token_accuracy": data.ans_token_accuracy,
+            "per_token_loss": data.per_token_loss,
         }
         with open(filepath, "w") as f:
             data_to_save = convert_for_json(data_to_save)

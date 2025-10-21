@@ -136,6 +136,7 @@ def record_activations(
     Args:
         model: The model to record activations from.
         modules: List of modules to grab activations from.
+        detach_activations: Flag whether use .detach() on collected activations
     Example:
     """
     recorded_activations: dict[int, list[Tensor]] = defaultdict(list)
