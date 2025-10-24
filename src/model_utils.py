@@ -163,11 +163,10 @@ class HFCompat(nn.Module):
         self.base = base
 
     def forward(self, x, return_attn=False):
-        out = self.base(x, return_attn=return_attn)
+        logits, attn = self.base(x, return_attn=return_attn)
         if return_attn:
-            logits, attn = out
             return types.SimpleNamespace(logits=logits, attn=attn)
-        return types.SimpleNamespace(logits=out)
+        return types.SimpleNamespace(logits=logits)
 
 
 def save_model_and_optimizer(model, optimizer, args, ckpt_idx):

@@ -385,24 +385,34 @@ class Transformer(nn.Module):
             return logits, torch.stack(all_attn, dim=0)
         return logits, None
 
+    def compute_output(
+        self,
+        input_tokens: Float[Array, "batch_size seq_len"],
+        module_for_attns: str,
+    ) -> tuple[
+        Float[Array, "batch_size seq_len vocab_size"],
+        Float[Array, "batch_size seq_len n_head h_dim"],
+    ]:
+        with record_activations(
+            self, module_names=[module_for_attns], detach_activations=False
+        ) as activs_cache:
+            logits, _ = self.forward(input_tokens)
+        attentions = activs_cache[module_for_attns]
+        return logits, attentions
+
     def compute_loss(
         self,
         input_tokens: Float[Array, "batch_size seq_len"],
         target_tokens: Float[Array, "batch_size seq_len"],
         partial_sums: Float[Array, "batch_size num_partials"],
         separator_position: int,
-        module_for_attns="layers.1.attn.hook_attn_output_per_head",
+        module_for_attns: str = "layers.1.attn.hook_attn_output_per_head",
     ):
 
-        with record_activations(
-            self, module_names=[module_for_attns], detach_activations=False
-        ) as activs_cache:
-            logits, attentions = self.forward(input_tokens)
-        attentions = activs_cache[module_for_attns]
-
+        logits, attns = self.compute_output(input_tokens, module_for_attns)
         per_token_loss = compute_next_token_loss(logits, target_tokens)
         partial_sums_loss = self.compute_partial_sums_loss(
-            attentions, partial_sums, sep_pos=separator_position
+            attns, partial_sums, sep_pos=separator_position
         )
         accuracies = compute_accuracies(logits, target_tokens, separator_position)
 
@@ -446,19 +456,19 @@ def compute_accuracies(
     ans_labels = labels[
         ..., separator_position + 1 :
     ]  # here we add +1 as labels[..., sep_position] is the second-to-last EoS token
-    acc.correct_ans_tokens = (ans_preds == ans_labels).sum()
+    acc.correct_ans_tokens = (ans_preds == ans_labels).sum().item()
 
     # the code below computes how many fully correct answers are there in the batch
-    acc.total_ans_tokens = (ans_labels != -100).sum()
+    acc.total_ans_tokens = (ans_labels != -100).sum().item()
     correct_per_row = (ans_preds == ans_labels).sum(-1)
-    acc.total_correct_answers = (correct_per_row == ans_labels.shape[-1]).sum()
+    acc.total_correct_answers = (correct_per_row == ans_labels.shape[-1]).sum().item()
 
     labels_pred = logits.argmax(-1)
     mask = labels[..., 1:].ge(0)
     correct_tokens = ((labels_pred[..., :-1] == labels[..., 1:]) * mask).sum()
-    acc.total_correct = correct_tokens
-    acc.total_tokens = mask.sum()
-    acc.token_accuracy = correct_tokens / acc.total_tokens
+    acc.total_correct = correct_tokens.item()
+    acc.total_tokens = mask.sum().item()
+    acc.token_accuracy = (correct_tokens / acc.total_tokens).item()
     return acc
 
 

@@ -5,7 +5,6 @@ import os
 
 import torch
 import numpy as np
-from tqdm import trange, tqdm
 
 from src.model_utils import create_c_hat_model, save_model_and_optimizer
 
@@ -33,8 +32,9 @@ def evaluate(model, tokenizer, dataloader):
 
 
 def get_sep_position(tokenizer, input_ids):
+    first_sample = input_ids[0].to("cpu")
     sep_id = tokenizer("###")[f"input_ids"][0]
-    sep_pos = np.where(input_ids[0] == sep_id)[0][0]
+    sep_pos = np.where(first_sample == sep_id)[0][0]
     assert (input_ids[:, sep_pos] == sep_id).all(), "Inconsistent separator positions"
     return sep_pos
 
@@ -129,7 +129,10 @@ def main():
 
     device = torch.device(f"cuda:{args.gpu_ord}")
     model, tokenizer, config = create_c_hat_model(device)
-    datasets = get_loaders(args, tokenizer)
+    paths = {"train": args.train_path, "val": args.val_path, "test": args.test_path}
+    datasets = get_loaders(
+        paths, max_size=args.max_size, batch_size=args.batch_size, tokenizer=tokenizer
+    )
     optimizer = create_optimizer(args, model)
     # save_model_and_optimizer(model, optimizer, args, rank, -1)
     train(args, model, tokenizer, optimizer, datasets)
