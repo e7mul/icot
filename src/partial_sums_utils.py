@@ -20,6 +20,9 @@ def compute_partial_sums(a: str, b: str) -> list[int]:
     Computes partial sums for digit multiplication according to Eq. 1 & 2
     from: arxiv.org/abs/2510.00184
 
+    Function assumes that input a, b are string representations of the numbers in the
+    standard order (not inverted as in the final form).
+
     c_hut_k = s_k + r_{k-1}
     s_k = \sum_{i+j = k} a_i * b_j
     r_k = (s_k + r_{k-1}) // 10

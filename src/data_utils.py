@@ -388,26 +388,32 @@ def prompt_ci_operands(
     return prompt_txts, prompt_token_ids
 
 
-def get_dataloader(args, path, tokenizer):
+def get_dataloader(path, max_size, batch_size, tokenizer):
     sampler = None  # for know we don't need sampler as we don't use Distributed Env
     dataset = PSDataset(
         tokenizer,
         path,
-        max_size=args.max_size,
+        max_size=max_size,
     )
 
     loader = DataLoader(
         dataset,
-        batch_size=args.batch_size,
+        batch_size=batch_size,
         shuffle=True,
     )
     return loader, sampler
 
 
-def get_loaders(args, tokenizer):
-    train_loader, train_sampler = get_dataloader(args, args.train_path, tokenizer)
-    val_loader, val_sampler = get_dataloader(args, args.val_path, tokenizer)
-    test_loader, test_sampler = get_dataloader(args, args.test_path, tokenizer)
+def get_loaders(paths, max_size, batch_size, tokenizer):
+    train_loader, train_sampler = get_dataloader(
+        paths.get("train", None), max_size, batch_size, tokenizer
+    )
+    val_loader, val_sampler = get_dataloader(
+        paths.get("val", None), max_size, batch_size, tokenizer
+    )
+    test_loader, test_sampler = get_dataloader(
+        paths.get("test", None), max_size, batch_size, tokenizer
+    )
     return Data(
         train_loader=train_loader,
         train_sampler=train_sampler,
