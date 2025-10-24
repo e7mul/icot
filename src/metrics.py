@@ -20,20 +20,39 @@ class Metrics:
     correct_ans_tokens: int = 0
     ans_tokens: int = 0
 
+    def parse_to_numbers(self, outputs):
+        # Recursively process dataclasses
+        def process(obj):
+            if hasattr(obj, "__dataclass_fields__"):
+                for field in obj.__dataclass_fields__:
+                    val = getattr(obj, field)
+                    if hasattr(val, "__dataclass_fields__"):
+                        process(val)
+                    else:
+                        try:
+                            setattr(obj, field, val.item())
+                        except RuntimeError:
+                            setattr(obj, field, [i.item() for i in val])
+                        except AttributeError:
+                            continue
+
+        process(outputs)
+
     def update(self, outputs, batch_size):
-        self.partial_sums_loss += outputs.losses.partial_sums_loss.item()
-        self.token_loss += outputs.losses.token_loss.item()
-        self.correct_tokens += outputs.acc.total_correct.item()
-        self.tokens += outputs.acc.total_tokens.item()
+        output = self.parse_to_numbers(outputs)
+        self.partial_sums_loss += outputs.losses.partial_sums_loss
+        self.token_loss += outputs.losses.token_loss
+        self.correct_tokens += outputs.acc.total_correct
+        self.tokens += outputs.acc.total_tokens
         self.instances += batch_size
-        self.correct_answers += outputs.acc.total_correct_answers.item()
-        self.correct_ans_tokens += outputs.acc.correct_ans_tokens.item()
-        self.ans_tokens += outputs.acc.total_ans_tokens.item()
+        self.correct_answers += outputs.acc.total_correct_answers
+        self.correct_ans_tokens += outputs.acc.correct_ans_tokens
+        self.ans_tokens += outputs.acc.total_ans_tokens
         for idx, element in enumerate(outputs.losses.per_token_loss):
             try:
-                self.per_token_loss[idx] += element.item()
+                self.per_token_loss[idx] += element
             except IndexError:
-                self.per_token_loss.append(element.item())
+                self.per_token_loss.append(element)
 
     def print_metrics_average(self, step, **kwargs):
         try:

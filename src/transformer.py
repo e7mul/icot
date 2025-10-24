@@ -30,7 +30,7 @@ class Accuracies:
 class Losses:
     token_loss: float | None = None
     partial_sums_loss: float | None = None
-    per_token_loss: float | None = None
+    per_token_loss: torch.Tensor | None = None
 
 
 @dataclass
@@ -468,7 +468,9 @@ def compute_accuracies(
     correct_tokens = ((labels_pred[..., :-1] == labels[..., 1:]) * mask).sum()
     acc.total_correct = correct_tokens.item()
     acc.total_tokens = mask.sum().item()
-    acc.token_accuracy = (correct_tokens / acc.total_tokens).item()
+    acc.token_accuracy = (
+        (correct_tokens / acc.total_tokens).item() if acc.total_tokens > 0 else 0.0
+    )
     return acc
 
 
