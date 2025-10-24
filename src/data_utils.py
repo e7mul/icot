@@ -389,7 +389,7 @@ def prompt_ci_operands(
 
 
 def get_dataloader(path, max_size, batch_size, tokenizer):
-    sampler = None  # for know we don't need sampler as we don't use Distributed Env
+    sampler = None  # for now we don't need sampler as we don't use Distributed Env
     dataset = PSDataset(
         tokenizer,
         path,

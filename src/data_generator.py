@@ -26,12 +26,12 @@ def generate_data(
     digits_in_operands: int,
     num_samples: int,
     add_partial_sums: bool,
-    previous_lines: list[str],
+    previous_examples: set[str],
 ) -> list[str]:
-    maximum_digit = int("9" * digits_in_operands)
+    maximum_value = int("9" * digits_in_operands)
     all_lines = []
     while len(all_lines) < num_samples:
-        a, b = np.random.randint(1, maximum_digit, size=(2,))
+        a, b = np.random.randint(1, maximum_value + 1, size=(2,))
         result = a * b
         a_str = int2str(a, digits_in_operands)
         b_str = int2str(b, digits_in_operands)
@@ -42,14 +42,11 @@ def generate_data(
             partial_a = a_str.replace(" ", "")[::-1]
             partial_b = b_str.replace(" ", "")[::-1]
             partial_sums = compute_partial_sums(partial_a, partial_b)
-            line.replace("\n", "")
+            partial_sums = compute_partial_sums(partial_a, partial_b)
             line += "&&&" + "& ".join(str(partial_sum) for partial_sum in partial_sums)
-        if check_for_copy(line, all_lines):
-            if previous_lines:
-                if check_for_copy(line, previous_lines):
-                    all_lines.append(line + "\n")
-            else:
-                all_lines.append(line + "\n")
+        if check_for_copy(line, previous_examples):
+            all_lines.append(line + "\n")
+            previous_examples.update(line)
     return all_lines
 
 
@@ -95,11 +92,11 @@ if __name__ == "__main__":
     path = os.path.join("data", f"{num_digits}_by_{num_digits}")
     os.makedirs(path, exist_ok=True)
 
-    previous_examples = []
+    previous_examples = set()
     if args.previous_datasets:
         for fname in args.previous_datasets:
             with open(os.path.join(path, fname + ".txt"), "r") as f:
-                previous_examples += f.readlines()
+                previous_examples.update(f.readlines())
 
     all_lines = generate_data(
         num_digits, num_samples, args.generate_partial_sums, previous_examples

@@ -28,9 +28,9 @@ for dirname in os.listdir(rpath):
         losses = per_token_loss[str(step)]
         loss_matrix[i, : len(losses)] = losses
 
-    # Only plot token positions for which the initial value (step index 0) is above a small threshold
-    tolerance = 1e-8
+    # Plot the last D token positions
     token_positions_to_plot = np.arange(max_token_len)[-D:]
+    plt.figure(figsize=(10, 6))
     plt.figure(figsize=(10, 6))
     for token_pos in token_positions_to_plot:
         plt.plot(
@@ -47,3 +47,4 @@ for dirname in os.listdir(rpath):
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(os.path.join(rpath, dirname, "per_token_loss_across_steps.png"))
+    plt.close()
