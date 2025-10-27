@@ -44,6 +44,16 @@ def get_sep_position(tokenizer, input_ids):
 def combine_losses(
     losses: Losses, p_lambda: float, mse_loss_lambda: float
 ) -> torch.Tensor:
+    """Compute the weighted combination of loss components.
+
+    Args:
+        losses: Object containing token_loss, partial_sums_loss, and mse_output_loss
+        p_lambda: Weight for the partial sums loss component
+        mse_loss_lambda: Weight for the MSE output loss component
+
+    Returns:
+        Combined loss as a scalar tensor
+    """
     loss = (
         losses.token_loss
         + p_lambda * losses.partial_sums_loss

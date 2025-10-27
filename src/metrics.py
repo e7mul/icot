@@ -65,7 +65,7 @@ class Metrics:
         mse_on_output = self.output_mse_loss / self.instances
         extra_metrics = " ".join(f"{k}: {v}" for k, v in kwargs.items())
         print(
-            f"Step: {step}. PPL: {avg_ppl}, PartSums: {part_sum_loss:.3f}, MSEonOutput: {mse_on_output:.3f} {extra_metrics}"
+            f"Step: {step}. PPL: {avg_ppl}, PartSums: {part_sum_loss:.3f}, MSE on output: {mse_on_output:.3f} {extra_metrics}"
         )
 
 

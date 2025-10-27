@@ -5,6 +5,7 @@ import einops
 from fancy_einsum import einsum
 from jaxtyping import Float, Array, Integer
 from torch.nn import CrossEntropyLoss
+from transformers import PreTrainedTokenizer
 from src.ActivationCache import record_activations
 
 # helper
@@ -319,11 +320,12 @@ class TransformerConfig:
 
 
 class Transformer(nn.Module):
-    def __init__(self, config: TransformerConfig):
+    def __init__(self, config: TransformerConfig, tokenizer: PreTrainedTokenizer):
         super().__init__()
         self.depth = config.depth
         self.hidden_dim = config.hidden_dim
         self.vocab_size = config.vocab_size
+        self.tokenizer = tokenizer
 
         emb_config = EmbeddingLayerConfig(
             vocab_size=config.vocab_size, D=config.hidden_dim, device=config.device
@@ -424,12 +426,17 @@ class Transformer(nn.Module):
         self, labels: Integer[Array, "batch_size ..."]
     ) -> Float[Array, "batch_size ..."]:
         tokens = self.tokenizer.batch_decode(labels)
-        labels = torch.tensor([])
+        result = []
         for sample in tokens:
-            sample = torch.tensor([float(digit) for digit in sample.replace(" ", "")])
-            labels = torch.cat((labels, sample.view(1, -1)), dim=0)
-        labels = labels.to(self.device)
-        return labels
+            cleaned = sample.replace(" ", "")
+            try:
+                sample_tensor = torch.tensor([float(digit) for digit in cleaned])
+            except ValueError as e:
+                raise ValueError(
+                    f"Non-numeric character in decoded token: {cleaned}"
+                ) from e
+            result.append(sample_tensor)
+        return torch.stack(result).to(self.device)
 
     def compute_mse_loss(
         self,
