@@ -153,7 +153,7 @@ def create_c_hat_model(device):
         max_seq_len=128,
         device=device,
     )
-    model = Transformer(config).to(device)
+    model = Transformer(config, tokenizer).to(device)
     return model, tokenizer, config
 
 

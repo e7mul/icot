@@ -3,7 +3,7 @@ from typing import Optional, Any
 from dataclasses import dataclass
 import einops
 from fancy_einsum import einsum
-from jaxtyping import Float, Array
+from jaxtyping import Float, Array, Integer
 from torch.nn import CrossEntropyLoss
 from src.ActivationCache import record_activations
 
@@ -28,9 +28,10 @@ class Accuracies:
 
 @dataclass
 class Losses:
-    token_loss: float | None = None
-    partial_sums_loss: float | None = None
+    token_loss: torch.Tensor | None = None
+    partial_sums_loss: torch.Tensor | None = None
     per_token_loss: torch.Tensor | None = None
+    mse_output_loss: torch.Tensor | None = None
 
 
 @dataclass
@@ -355,6 +356,9 @@ class Transformer(nn.Module):
                 for head_idx in range(config.n_heads)
             }
         )
+
+        self.output_mse_probe = nn.Linear(self.hidden_dim, 1)
+
         self.device = config.device
 
     def forward(
@@ -382,8 +386,8 @@ class Transformer(nn.Module):
         x = self.ln_final(x)
         logits = self.unemb(x)
         if return_attn:
-            return logits, torch.stack(all_attn, dim=0)
-        return logits, None
+            return logits, torch.stack(all_attn, dim=0), x
+        return logits, None, x
 
     def compute_output(
         self,
@@ -391,42 +395,86 @@ class Transformer(nn.Module):
         module_for_attns: str,
     ) -> tuple[
         Float[Array, "batch_size seq_len vocab_size"],
-        Float[Array, "batch_size seq_len n_head h_dim"],
+        Float[Array, "batch_size seq_len n_heads h_dim//n_heads"],
+        Float[Array, "batch_size seq_len h_dim"],
     ]:
         with record_activations(
             self, module_names=[module_for_attns], detach_activations=False
         ) as activs_cache:
-            logits, _ = self.forward(input_tokens)
+            logits, _, hidden_states = self.forward(input_tokens)
         attentions = activs_cache[module_for_attns]
-        return logits, attentions
+        return logits, attentions, hidden_states
+
+    @staticmethod
+    def cutoff_input_elements(labels: torch.Tensor) -> torch.Tensor:
+        """
+        Given a tensor of shape [batch_size, seq_len], where each row starts
+        with zero or more -100 values followed by target values, return a tensor
+        of shape [batch_size, target_len] containing only the target values
+        (i.e., excluding the leading -100s).
+
+        Assumes all rows have the same number of leading -100s.
+        """
+        # Find number of leading -100s (assume same for every row)
+        mask = labels[0] == -100
+        num_leading = mask.long().sum().item()
+        return labels[:, num_leading:]
+
+    def tokens2ints(
+        self, labels: Integer[Array, "batch_size ..."]
+    ) -> Float[Array, "batch_size ..."]:
+        tokens = self.tokenizer.batch_decode(labels)
+        labels = torch.tensor([])
+        for sample in tokens:
+            sample = torch.tensor([float(digit) for digit in sample.replace(" ", "")])
+            labels = torch.cat((labels, sample.view(1, -1)), dim=0)
+        labels = labels.to(self.device)
+        return labels
+
+    def compute_mse_loss(
+        self,
+        hidden_states: Float[Array, "batch_size seq_len h_dim"],
+        labels: Integer[Array, "batch_size seq_len"],
+    ) -> Float[Array, ""]:
+        labels = self.cutoff_input_elements(labels)
+        target_len = labels.shape[-1]
+        hidden_states = hidden_states[:, -target_len:, :]
+        labels = self.tokens2ints(labels)
+        probe_output = self.output_mse_probe(hidden_states).squeeze(-1)
+        assert (
+            probe_output.shape == labels.shape
+        ), f"Inconsistent shapes when computing MSE Loss. Output probe {probe_output.shape}, Targets: {labels.shape}"
+        return torch.nn.functional.mse_loss(probe_output, labels)
 
     def compute_loss(
         self,
-        input_tokens: Float[Array, "batch_size seq_len"],
-        target_tokens: Float[Array, "batch_size seq_len"],
+        input_tokens: Integer[Array, "batch_size seq_len"],
+        target_tokens: Integer[Array, "batch_size seq_len"],
         partial_sums: Float[Array, "batch_size num_partials"],
         separator_position: int,
         module_for_attns: str = "layers.1.attn.hook_attn_output_per_head",
     ):
 
-        logits, attns = self.compute_output(input_tokens, module_for_attns)
-        per_token_loss = compute_next_token_loss(logits, target_tokens)
-        partial_sums_loss = self.compute_partial_sums_loss(
-            attns, partial_sums, sep_pos=separator_position
+        logits, attns, hidden_states = self.compute_output(
+            input_tokens, module_for_attns
         )
+
         accuracies = compute_accuracies(logits, target_tokens, separator_position)
 
         losses = Losses()
-        losses.token_loss = per_token_loss.mean()
-        losses.partial_sums_loss = partial_sums_loss
-        losses.per_token_loss = per_token_loss
+        losses.partial_sums_loss = self.compute_partial_sums_loss(
+            attns, partial_sums, sep_pos=separator_position
+        )
+        losses.per_token_loss = compute_next_token_loss(logits, target_tokens)
+        losses.mse_output_loss = self.compute_mse_loss(hidden_states, target_tokens)
+        losses.token_loss = losses.per_token_loss.mean()
 
         out = Output(losses=losses, acc=accuracies)
         return out
 
     def compute_partial_sums_loss(
         self,
-        attention_maps: Float[Array, "batch_size seq_len n_heads hid_dim"],
+        attention_maps: Float[Array, "batch_size seq_len n_heads h_dim/n_heads"],
         partial_sums: Float[Array, "batch_size num_partial_sums"],
         sep_pos: int,
     ) -> torch.Tensor:
@@ -450,12 +498,10 @@ def compute_accuracies(
 ) -> Accuracies:
     acc = Accuracies()
 
-    ans_preds = logits[..., separator_position:-1, :].argmax(
-        -1
-    )  # the last input token is <|endoftext|> thus, we don't care what models predicts for it
-    ans_labels = labels[
-        ..., separator_position + 1 :
-    ]  # here we add +1 as labels[..., sep_position] is the second-to-last EoS token
+    # the last input token is <|endoftext|> thus, we don't care what models predicts for it
+    ans_preds = logits[..., separator_position:-1, :].argmax(-1)
+    # here we add +1 as labels[..., sep_position] is the second-to-last EoS token
+    ans_labels = labels[..., separator_position + 1 :]
     acc.correct_ans_tokens = (ans_preds == ans_labels).sum().item()
 
     # the code below computes how many fully correct answers are there in the batch

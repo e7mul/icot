@@ -15,6 +15,8 @@ from src.metrics import (
     save_metrics,
 )
 
+from src.transformer import Losses
+
 
 @torch.no_grad()
 def evaluate(model, tokenizer, dataloader):
@@ -39,7 +41,20 @@ def get_sep_position(tokenizer, input_ids):
     return sep_pos
 
 
-def single_train_loop(model, tokenizer, optimizer, train_loader, step, p_lambda):
+def combine_losses(
+    losses: Losses, p_lambda: float, mse_loss_lambda: float
+) -> torch.Tensor:
+    loss = (
+        losses.token_loss
+        + p_lambda * losses.partial_sums_loss
+        + mse_loss_lambda * losses.mse_output_loss
+    )
+    return loss
+
+
+def single_train_loop(
+    model, tokenizer, optimizer, train_loader, step, p_lambda, mse_loss_lambda
+):
     metrics = Metrics()
     for input_ids, labels, partial_sums in train_loader:
         sep_pos = get_sep_position(tokenizer, input_ids)
@@ -50,7 +65,7 @@ def single_train_loop(model, tokenizer, optimizer, train_loader, step, p_lambda)
         outputs = model.compute_loss(
             input_ids, labels, partial_sums, separator_position=sep_pos
         )
-        loss = outputs.losses.token_loss + p_lambda * outputs.losses.partial_sums_loss
+        loss = combine_losses(outputs.losses, p_lambda, mse_loss_lambda)
         loss.backward()
         optimizer.step()
         optimizer.zero_grad(set_to_none=True)
@@ -76,6 +91,7 @@ def train(args, model, tokenizer, optimizer, datasets):
             datasets.train_loader,
             step,
             args.partial_sums_lambda,
+            args.mse_loss_lambda,
         )
 
         trackers["train"].update(train_metrics, epoch)
@@ -116,6 +132,7 @@ def main():
     parser.add_argument("--save_config", type=str, required=True)
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--partial_sums_lambda", type=float, default=0.0)
+    parser.add_argument("--mse_loss_lambda", type=float, default=0.0)
     args = parser.parse_args()
 
     # Set random seeds for reproducibility

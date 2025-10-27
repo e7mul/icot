@@ -17,6 +17,7 @@ class Metrics:
     token_loss: float = 0.0
     per_token_loss: list[float] = field(default_factory=list)
     partial_sums_loss: float = 0.0
+    output_mse_loss: float = 0.0
     correct_ans_tokens: int = 0
     ans_tokens: int = 0
 
@@ -39,8 +40,9 @@ class Metrics:
         process(outputs)
 
     def update(self, outputs, batch_size):
-        output = self.parse_to_numbers(outputs)
+        self.parse_to_numbers(outputs)
         self.partial_sums_loss += outputs.losses.partial_sums_loss
+        self.output_mse_loss += outputs.losses.mse_output_loss
         self.token_loss += outputs.losses.token_loss
         self.correct_tokens += outputs.acc.total_correct
         self.tokens += outputs.acc.total_tokens
@@ -60,9 +62,10 @@ class Metrics:
         except OverflowError:
             avg_ppl = math.inf
         part_sum_loss = self.partial_sums_loss / self.instances
+        mse_on_output = self.output_mse_loss / self.instances
         extra_metrics = " ".join(f"{k}: {v}" for k, v in kwargs.items())
         print(
-            f"Step: {step}. PPL: {avg_ppl}, PartSums: {part_sum_loss:.3f}, {extra_metrics}"
+            f"Step: {step}. PPL: {avg_ppl}, PartSums: {part_sum_loss:.3f}, MSEonOutput: {mse_on_output:.3f} {extra_metrics}"
         )
 
 
@@ -72,6 +75,7 @@ class MetricTracker:
         self.token_accuracy = {}
         self.ppl = {}
         self.mse = {}
+        self.mse_on_output = {}
         self.ans_token_accuracy = {}
         self.per_token_loss = {}
 
@@ -87,6 +91,7 @@ class MetricTracker:
             ppl = math.inf
         self.ppl[timestep] = ppl
         self.mse[timestep] = metrics.partial_sums_loss / metrics.instances
+        self.mse_on_output[timestep] = metrics.output_mse_loss / metrics.instances
         self.ans_token_accuracy[timestep] = (
             metrics.correct_ans_tokens / metrics.ans_tokens
         )
@@ -95,6 +100,7 @@ class MetricTracker:
         metrics = [
             f"PPL: {round(self.ppl.get(timestep, 'N/A'), 3)}",
             f"MSE: {round(self.mse.get(timestep, 'N/A'), 3)}",
+            f"MSE on output: {round(self.mse_on_output.get(timestep, 'N/A'), 3)}",
             f"Accuracy: {round(self.accuracy.get(timestep, 'N/A'), 2)}",
             f"Token Accuracy: {round(self.token_accuracy.get(timestep, 'N/A'), 2)}",
             f"Ans Token Accuracy: {round(self.ans_token_accuracy.get(timestep, 'N/A'), 2)}",
