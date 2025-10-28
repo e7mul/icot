@@ -138,7 +138,7 @@ def load_c_hat_model(model_path, device):
 
     model.load_state_dict(state_dict)
     model.eval()
-    return HFCompat(model), tokenizer
+    return model, tokenizer
 
 
 def create_c_hat_model(device):
@@ -169,12 +169,9 @@ class HFCompat(nn.Module):
         return types.SimpleNamespace(logits=logits)
 
 
-def save_model_and_optimizer(model, optimizer, args, ckpt_idx):
-    print("Saving model and optimizer...")
-    ckpt_path = os.path.join(args.save_model, f"checkpoint_{ckpt_idx}.pt")
-    optim_path = os.path.join(args.save_model, f"optimizer_{ckpt_idx}.pt")
-    os.makedirs(args.save_model, exist_ok=True)
-    torch.save(model.state_dict(), ckpt_path)
-    optimizer_state_dict = optimizer.state_dict()
-    torch.save(optimizer_state_dict, optim_path)
-    print(f"Saved model and optimizer to {ckpt_path}")
+def save_checkpoint(state: torch.nn.Module | torch.optim.Optimizer, path, ckpt_idx):
+    os.makedirs(path, exist_ok=True)
+    path = os.path.join(path, f"epoch_{ckpt_idx}.pt")
+    state_dict = state.state_dict()
+    torch.save(state_dict, path)
+    print(f"Saved state_dict to {path}")

@@ -406,13 +406,13 @@ def get_dataloader(path, max_size, batch_size, tokenizer):
 
 def get_loaders(paths, max_size, batch_size, tokenizer):
     train_loader, train_sampler = get_dataloader(
-        paths.get("train", None), max_size, batch_size, tokenizer
+        paths.train_fname, max_size, batch_size, tokenizer
     )
     val_loader, val_sampler = get_dataloader(
-        paths.get("val", None), max_size, batch_size, tokenizer
+        paths.val_fname, max_size, batch_size, tokenizer
     )
     test_loader, test_sampler = get_dataloader(
-        paths.get("test", None), max_size, batch_size, tokenizer
+        paths.test_fname, max_size, batch_size, tokenizer
     )
     return Data(
         train_loader=train_loader,

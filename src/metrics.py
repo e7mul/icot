@@ -108,6 +108,15 @@ class MetricTracker:
         print(f"{name} -- " + "; ".join(metrics) + ".")
         print(f"Per token loss: {self.per_token_loss.get(timestep, 'N/A')}")
 
+    @classmethod
+    def from_file(cls, results_fname: str):
+        with open(results_fname, "r") as f:
+            previous_data = json.load(f)
+        tracker = cls()
+        for key, value in previous_data.items():
+            setattr(tracker, key, value)
+        return tracker
+
 
 # Convert numpy arrays and tensors to lists for JSON serialization
 def convert_for_json(obj):
@@ -129,6 +138,7 @@ def save_metrics(metrics_to_save: dict[str, MetricTracker], save_dir: str):
     metrics_to_save: mapping from metric name to its MetricTracker
     save_dir: directory path where metric files will be written
     """
+    os.makedirs(save_dir, exist_ok=True)
     for fname, data in metrics_to_save.items():
         filepath = os.path.join(save_dir, f"{fname}_metric_tracker.json")
         data_to_save = {
@@ -144,6 +154,15 @@ def save_metrics(metrics_to_save: dict[str, MetricTracker], save_dir: str):
             json.dump(data_to_save, f)
 
     print(f"Saved metrics to {save_dir}")
+
+
+def load_metric_trackers(
+    trackers_dname: str, trackers: dict[str, MetricTracker]
+) -> dict[str, MetricTracker]:
+    for key in trackers.keys():
+        fname = f"{key}_metric_tracker.json"
+        trackers[key] = MetricTracker.from_file(os.path.join(trackers_dname, fname))
+    return trackers
 
 
 if __name__ == "__main__":
