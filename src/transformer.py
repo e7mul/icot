@@ -1,6 +1,6 @@
 import torch, torch.nn as nn, torch.nn.functional as F
 from typing import Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import einops
 from fancy_einsum import einsum
 from jaxtyping import Float, Array, Integer
@@ -19,20 +19,31 @@ ACT2FN = {
 
 @dataclass
 class Accuracies:
-    token_accuracy: float | None = None
     total_correct_answers: int | None = None
     total_correct: int | None = None
     correct_ans_tokens: int | None = None
     total_ans_tokens: int | None = None
     total_tokens: int | None = None
 
+    token_accuracy: float = field(init=False)
+
+    def __post_init__(self):
+        if self.total_tokens > 0:
+            self.token_accuracy = self.total_correct / self.total_tokens
+        else:
+            self.token_accuracy = 0.0
+
 
 @dataclass
 class Losses:
-    token_loss: torch.Tensor | None = None
     partial_sums_loss: torch.Tensor | None = None
     per_token_loss: torch.Tensor | None = None
-    mse_output_loss: torch.Tensor | None = None
+    regress_output_loss: torch.Tensor | None = None
+
+    token_loss: torch.Tensor = field(init=False)
+
+    def __post_init__(self):
+        self.token_loss = self.per_token_loss.mean()
 
 
 @dataclass
@@ -468,13 +479,13 @@ class Transformer(nn.Module):
 
         accuracies = compute_accuracies(logits, target_tokens, separator_position)
 
-        losses = Losses()
-        losses.partial_sums_loss = self.compute_partial_sums_loss(
-            attns, partial_sums, sep_pos=separator_position
+        losses = Losses(
+            partial_sums_loss=self.compute_partial_sums_loss(
+                attns, partial_sums, sep_pos=separator_position
+            ),
+            per_token_loss=compute_next_token_loss(logits, target_tokens),
+            regress_output_loss=self.compute_mse_loss(hidden_states, target_tokens),
         )
-        losses.per_token_loss = compute_next_token_loss(logits, target_tokens)
-        losses.mse_output_loss = self.compute_mse_loss(hidden_states, target_tokens)
-        losses.token_loss = losses.per_token_loss.mean()
 
         out = Output(losses=losses, acc=accuracies)
         return out
@@ -503,26 +514,23 @@ def compute_accuracies(
     labels: Float[Array, "batch_size seq_len"],
     separator_position: int,
 ) -> Accuracies:
-    acc = Accuracies()
 
     # the last input token is <|endoftext|> thus, we don't care what models predicts for it
     ans_preds = logits[..., separator_position:-1, :].argmax(-1)
     # here we add +1 as labels[..., sep_position] is the second-to-last EoS token
     ans_labels = labels[..., separator_position + 1 :]
-    acc.correct_ans_tokens = (ans_preds == ans_labels).sum().item()
-
-    # the code below computes how many fully correct answers are there in the batch
-    acc.total_ans_tokens = (ans_labels != -100).sum().item()
     correct_per_row = (ans_preds == ans_labels).sum(-1)
-    acc.total_correct_answers = (correct_per_row == ans_labels.shape[-1]).sum().item()
 
     labels_pred = logits.argmax(-1)
     mask = labels[..., 1:].ge(0)
-    correct_tokens = ((labels_pred[..., :-1] == labels[..., 1:]) * mask).sum()
-    acc.total_correct = correct_tokens.item()
-    acc.total_tokens = mask.sum().item()
-    acc.token_accuracy = (
-        (correct_tokens / acc.total_tokens).item() if acc.total_tokens > 0 else 0.0
+    correct_toks = ((labels_pred[..., :-1] == labels[..., 1:]) * mask).sum()
+
+    acc = Accuracies(
+        correct_ans_tokens=(ans_preds == ans_labels).sum().item(),
+        total_ans_tokens=(ans_labels != -100).sum().item(),
+        total_correct_answers=(correct_per_row == ans_labels.shape[-1]).sum().item(),
+        total_correct=correct_toks.item(),
+        total_tokens=mask.sum().item(),
     )
     return acc
 
