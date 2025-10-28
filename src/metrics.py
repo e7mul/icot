@@ -1,5 +1,4 @@
 import os
-from dataclasses import dataclass
 import math
 import json
 
@@ -18,12 +17,6 @@ class Metrics:
     regress_output_loss: float = 0.0
     correct_ans_tokens: int = 0
     ans_tokens: int = 0
-
-    acc: float = field(init=False)
-    ppl: float = field(init=False)
-    partial_sums: float = field(init=False)
-    regress_output: float = field(init=False)
-    ans_token_acc: float = field(init=False)
 
     def compute_metrics(self) -> dict[str, float]:
         assert self.instances > 0, "instances must be > 0 to compute averaged metrics"
@@ -77,9 +70,9 @@ class Metrics:
             previous_data = {}
 
         for metric, val in derived_metrics.items():
-            if metric == "per_token_ppl":
+            if metric == "PerTokPPL":
                 try:
-                    previous_data[metric] = previous_data[metric].append(val)
+                    previous_data[metric].append(val)
                 except KeyError:
                     previous_data[metric] = [val]
             else:

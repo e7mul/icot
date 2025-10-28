@@ -20,7 +20,7 @@ else
 fi
 export RESULTS_DNAME
 
-mkdir -p ${RESULTS_DNAME}
+mkdir -p "${RESULTS_DNAME}"
 
 CMD="python3 -u -m src.train \
     --train_fname ${DATA_DNAME}/train.txt \

@@ -219,11 +219,7 @@ def main():
     parser.add_argument("--mse_loss_lambda", type=float, default=0.0)
     args = parser.parse_args()
 
-    paths = Paths(
-        train_fname=args.train_fname,
-        results_dname=args.results_dname,
-    )
-    paths = paths.from_args(args)
+    paths = Paths.from_args(args)
 
     # Set random seeds for reproducibility
     torch.manual_seed(args.seed)
